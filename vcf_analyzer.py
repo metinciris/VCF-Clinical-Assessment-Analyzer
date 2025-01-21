@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import filedialog, ttk, messagebox
 import pandas as pd
 import re
 
@@ -115,19 +115,28 @@ class VCFAnalyzer:
                     af = float(format_dict["ING_AF"])
                     dp = int(format_dict["DP"])
                     value = f"{af:.1f}% ({dp})"
-                    key = (gene, mutation)
+                    key = (gene, mutation, assessment)  # assessment bilgisini key'e ekledik
                     if key not in results:
                         results[key] = {}
                     results[key][lab_id] = value
         
         # DataFrame oluştur
         df_data = []
-        for (gene, mutation), values in results.items():
-            row = {"Gene": gene, "Mutation": mutation}
+        for (gene, mutation, assessment), values in results.items():
+            row = {
+                "Gene": gene, 
+                "Mutation": mutation,
+                "CLI_ASSESSMENT": assessment  # Yeni sütun
+            }
             row.update(values)
             df_data.append(row)
         
         df = pd.DataFrame(df_data)
+        
+        # Sütun sıralamasını düzenle
+        cols = ["Gene", "Mutation", "CLI_ASSESSMENT"]
+        other_cols = [col for col in df.columns if col not in cols]
+        df = df[cols + other_cols]
         
         # Excel'e kaydet
         if df_data:
