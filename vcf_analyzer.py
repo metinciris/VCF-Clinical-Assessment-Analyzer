@@ -79,7 +79,7 @@ class VCFAnalyzer:
         if not selected_labels:
             selected_labels = list(self.analysis_labels)
 
-        results = []
+        results = {}
 
         for vcf_file in self.vcf_files:
             with open(vcf_file) as f:
@@ -116,14 +116,24 @@ class VCFAnalyzer:
                 dp = int(format_dict.get("DP", 0))
                 value = f"{af:.1f}% ({dp})"
                 
-                results.append({
-                    "Gene": gene,
-                    "Mutation": mutation,
-                    "Etiket Sınıfı": etiket_sinifi,  # Yeni sütun
-                    lab_id: value
-                })
+                key = (gene, mutation)
+                if key not in results:
+                    results[key] = {"Etiket Sınıfı": set(), lab_id: value}
+                results[key]["Etiket Sınıfı"].add(etiket_sinifi)  # Aynı mutasyon için etiketleri birleştir
+
+        # DataFrame oluştur
+        df_data = []
+        for (gene, mutation), values in results.items():
+            row = {
+                "Gene": gene,
+                "Mutation": mutation,
+                "Etiket Sınıfı": "; ".join(values["Etiket Sınıfı"]),  # Etiketleri tek satırda birleştir
+            }
+            del values["Etiket Sınıfı"]  # Excel'de etiketleri ayrı hücreye koymak için kaldırıyoruz
+            row.update(values)
+            df_data.append(row)
         
-        df = pd.DataFrame(results)
+        df = pd.DataFrame(df_data)
         
         # Excel sütun genişliklerini ayarla
         if not df.empty:
