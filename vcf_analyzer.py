@@ -79,7 +79,7 @@ class VCFAnalyzer:
         if not selected_labels:
             selected_labels = list(self.analysis_labels)
 
-        results = {}
+        results = []
 
         for vcf_file in self.vcf_files:
             with open(vcf_file) as f:
@@ -102,6 +102,7 @@ class VCFAnalyzer:
 
                 # Seçili etiketlerden herhangi biri varsa işle
                 matched_labels = {label: info.get(label, "N/A") for label in selected_labels}
+                etiket_sinifi = ", ".join(f"{k}: {v}" for k, v in matched_labels.items() if v != "N/A")
 
                 gene = info.get("GENE_SYMBOL", "N/A")
                 mutation = info.get("HGVS_TRANSCRIPT", "N/A")
@@ -115,26 +116,17 @@ class VCFAnalyzer:
                 dp = int(format_dict.get("DP", 0))
                 value = f"{af:.1f}% ({dp})"
                 
-                key = (gene, mutation, tuple(matched_labels.items()))  # Farklı etiketleri anahtar yap
-                if key not in results:
-                    results[key] = {}
-                results[key][lab_id] = value
+                results.append({
+                    "Gene": gene,
+                    "Mutation": mutation,
+                    "Etiket Sınıfı": etiket_sinifi,  # Yeni sütun
+                    lab_id: value
+                })
         
-        # DataFrame oluştur
-        df_data = []
-        for (gene, mutation, labels), values in results.items():
-            row = {
-                "Gene": gene, 
-                "Mutation": mutation
-            }
-            row.update(dict(labels))  # Dinamik olarak eklenen etiketler
-            row.update(values)
-            df_data.append(row)
-        
-        df = pd.DataFrame(df_data)
+        df = pd.DataFrame(results)
         
         # Excel sütun genişliklerini ayarla
-        if df_data:
+        if not df.empty:
             output_file = filedialog.asksaveasfilename(defaultextension=".xlsx")
             if output_file:
                 df.to_excel(output_file, index=False)
