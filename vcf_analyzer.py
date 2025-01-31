@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, ttk, messagebox
+from tkinter import filedialog, ttk, messagebox, simpledialog
 import pandas as pd
 import re
 from openpyxl import load_workbook
@@ -8,11 +8,10 @@ class VCFAnalyzer:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("VCF Analiz Programı")
-        self.root.geometry("700x550")
+        self.root.geometry("700x600")
         
         self.vcf_files = []
-        self.assessment_types = set()
-        self.classification_types = set()
+        self.analysis_labels = {"CLI_ASSESSMENT", "ING_CLASSIFICATION"}  # Varsayılan etiketler
         
         # Ana çerçeve
         self.main_frame = ttk.Frame(self.root, padding="10")
@@ -26,22 +25,23 @@ class VCFAnalyzer:
         self.files_label = ttk.Label(self.main_frame, text="Seçili dosya sayısı: 0")
         self.files_label.pack(pady=5)
         
-        # CLI_ASSESSMENT Tipleri
-        self.assessment_frame = ttk.LabelFrame(self.main_frame, text="CLI_ASSESSMENT Tipleri", padding="5")
-        self.assessment_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        self.assessment_listbox = tk.Listbox(self.assessment_frame, selectmode=tk.MULTIPLE)
-        self.assessment_listbox.pack(fill=tk.BOTH, expand=True)
+        # Dinamik Etiketler Listesi
+        self.label_frame = ttk.LabelFrame(self.main_frame, text="Analiz Edilecek Etiketler", padding="5")
+        self.label_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.label_listbox = tk.Listbox(self.label_frame, selectmode=tk.MULTIPLE)
+        self.label_listbox.pack(fill=tk.BOTH, expand=True)
         
-        # ING_CLASSIFICATION Tipleri
-        self.classification_frame = ttk.LabelFrame(self.main_frame, text="ING_CLASSIFICATION Tipleri", padding="5")
-        self.classification_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        self.classification_listbox = tk.Listbox(self.classification_frame, selectmode=tk.MULTIPLE)
-        self.classification_listbox.pack(fill=tk.BOTH, expand=True)
+        # Etiket ekleme ve kaldırma butonları
+        self.add_label_button = ttk.Button(self.main_frame, text="Yeni Etiket Ekle", command=self.add_label)
+        self.add_label_button.pack(pady=5)
+        self.remove_label_button = ttk.Button(self.main_frame, text="Seçili Etiketi Kaldır", command=self.remove_label)
+        self.remove_label_button.pack(pady=5)
         
         # Analiz Butonu
         self.analyze_button = ttk.Button(self.main_frame, text="Analiz Et", command=self.analyze_files)
         self.analyze_button.pack(pady=15)
 
+        self.update_label_list()
         self.root.mainloop()
     
     def select_files(self):
@@ -50,39 +50,35 @@ class VCFAnalyzer:
             filetypes=(("VCF files", "*.vcf"), ("All files", "*.*"))
         )
         self.files_label.config(text=f"Seçili dosya sayısı: {len(self.vcf_files)}")
-        
-        # Assessment ve Classification tiplerini bul
-        self.assessment_types.clear()
-        self.classification_types.clear()
-        
-        for vcf_file in self.vcf_files:
-            with open(vcf_file) as f:
-                for line in f:
-                    if line.startswith("#"):
-                        continue
-                    if "CLI_ASSESSMENT=" in line:
-                        assessment = re.search(r'CLI_ASSESSMENT=([^;]+)', line)
-                        if assessment:
-                            self.assessment_types.add(assessment.group(1))
-                    if "ING_CLASSIFICATION=" in line:
-                        classification = re.search(r'ING_CLASSIFICATION=([^;]+)', line)
-                        if classification:
-                            self.classification_types.add(classification.group(1))
-        
-        # Listbox'ları güncelle
-        self.assessment_listbox.delete(0, tk.END)
-        for assessment in sorted(self.assessment_types):
-            self.assessment_listbox.insert(tk.END, assessment)
-
-        self.classification_listbox.delete(0, tk.END)
-        for classification in sorted(self.classification_types):
-            self.classification_listbox.insert(tk.END, classification)
     
+    def update_label_list(self):
+        """GUI'deki etiket listesini günceller."""
+        self.label_listbox.delete(0, tk.END)
+        for label in sorted(self.analysis_labels):
+            self.label_listbox.insert(tk.END, label)
+    
+    def add_label(self):
+        """Kullanıcının yeni bir etiket eklemesini sağlar."""
+        new_label = simpledialog.askstring("Yeni Etiket", "Yeni etiket adını girin:")
+        if new_label and new_label.strip():
+            self.analysis_labels.add(new_label.strip())
+            self.update_label_list()
+    
+    def remove_label(self):
+        """Seçili etiketi kaldırır."""
+        selected_indices = self.label_listbox.curselection()
+        for i in selected_indices[::-1]:  # Baştan silersek index kayar
+            label = self.label_listbox.get(i)
+            self.analysis_labels.discard(label)
+        self.update_label_list()
+
     def analyze_files(self):
-        selected_assessments = [self.assessment_listbox.get(i) for i in self.assessment_listbox.curselection()]
-        selected_classifications = [self.classification_listbox.get(i) for i in self.classification_listbox.curselection()]
+        selected_labels = [self.label_listbox.get(i) for i in self.label_listbox.curselection()]
         
-        # **Yeni kural: Hiç seçim yapılmasa da tüm varyantları değerlendirebiliriz**
+        # Eğer hiç etiket seçilmemişse tüm verileri al
+        if not selected_labels:
+            selected_labels = list(self.analysis_labels)
+
         results = {}
 
         for vcf_file in self.vcf_files:
@@ -103,16 +99,10 @@ class VCFAnalyzer:
                 
                 fields = line.split("\t")
                 info = dict(item.split("=") for item in fields[7].split(";") if "=" in item)
-                
-                assessment = info.get("CLI_ASSESSMENT", "N/A")
-                classification = info.get("ING_CLASSIFICATION", "N/A")
-                
-                # **Seçim yapılmışsa filtre uygula, yoksa tüm varyantları al**
-                if selected_assessments and assessment not in selected_assessments:
-                    continue
-                if selected_classifications and classification not in selected_classifications:
-                    continue
-                
+
+                # Seçili etiketlerden herhangi biri varsa işle
+                matched_labels = {label: info.get(label, "N/A") for label in selected_labels}
+
                 gene = info.get("GENE_SYMBOL", "N/A")
                 mutation = info.get("HGVS_TRANSCRIPT", "N/A")
                 
@@ -125,20 +115,19 @@ class VCFAnalyzer:
                 dp = int(format_dict.get("DP", 0))
                 value = f"{af:.1f}% ({dp})"
                 
-                key = (gene, mutation, assessment, classification)
+                key = (gene, mutation, tuple(matched_labels.items()))  # Farklı etiketleri anahtar yap
                 if key not in results:
                     results[key] = {}
                 results[key][lab_id] = value
         
         # DataFrame oluştur
         df_data = []
-        for (gene, mutation, assessment, classification), values in results.items():
+        for (gene, mutation, labels), values in results.items():
             row = {
                 "Gene": gene, 
-                "Mutation": mutation,
-                "CLI_ASSESSMENT": assessment,
-                "ING_CLASSIFICATION": classification
+                "Mutation": mutation
             }
+            row.update(dict(labels))  # Dinamik olarak eklenen etiketler
             row.update(values)
             df_data.append(row)
         
